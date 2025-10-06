@@ -15,7 +15,10 @@ exports.register = async (req, res) => {
     const { name, email, password } = req.body;
     const newUser = await User.create({ name, email, password });
     const token = signToken(newUser._id);
-    res.status(201).json({ status: 'success', token, data: { user: newUser } });
+    // Do not return the password (even if hashed) to the client
+    const userObj = newUser.toObject();
+    delete userObj.password;
+    res.status(201).json({ status: 'success', token, data: { user: userObj } });
   } catch (error) {
     res.status(400).json({ status: 'fail', message: error.message });
   }

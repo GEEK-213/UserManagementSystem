@@ -1,94 +1,120 @@
 // client/src/components/UserList.jsx
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { jwtDecode } from 'jwt-decode';
-import { 
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, 
-  Paper, Typography, CircularProgress, Alert, IconButton, Box
-} from '@mui/material';
-import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
+import React, { useState, useEffect } from "react";
+import api from "../api/api";
+import { jwtDecode } from "jwt-decode";
+import EditUserDialog from "./EditUserDialog";
+
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Typography,
+  CircularProgress,
+  Alert,
+  IconButton,
+  Box,
+} from "@mui/material";
+import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 
 const UserList = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
+  const [editingUser, setEditingUser] = useState(null);
 
   // Fetch all users when the component mounts
   useEffect(() => {
     const fetchUsers = async (authToken) => {
       try {
-        const config = { headers: { Authorization: `Bearer ${authToken}` } };
-        const res = await axios.get('http://localhost:5000/api/users', config);
+        const res = await api.get("/users");
         setUsers(res.data.data.users);
       } catch (err) {
-        setError('Failed to fetch users. You might not be authorized.');
+        setError("Failed to fetch users. You might not be authorized.");
         console.error(err);
       } finally {
         setLoading(false);
       }
     };
-    
-    const token = localStorage.getItem('token');
+
+    const token = localStorage.getItem("token");
     if (token) {
       const decodedToken = jwtDecode(token);
       setCurrentUser(decodedToken);
       fetchUsers(token);
     } else {
-      setError('No token found, please log in.');
+      setError("No token found, please log in.");
       setLoading(false);
     }
   }, []);
 
   // Handler for deleting a user
   const handleDelete = async (userId) => {
-    if (!window.confirm('Are you sure you want to permanently delete this user?')) {
+    if (
+      !window.confirm("Are you sure you want to permanently delete this user?")
+    )
       return;
-    }
     try {
-      const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      await axios.delete(`http://localhost:5000/api/users/${userId}`, config);
-      setUsers(users.filter(user => user._id !== userId)); // Update UI instantly
+      await api.delete(`/users/${userId}`);
+      setUsers((prev) => prev.filter((user) => user._id !== userId)); // Optimistic UI
+      setSuccess("User deleted");
     } catch (err) {
-      setError('Failed to delete user.');
+      setError("Failed to delete user.");
     }
   };
 
   // Handler for updating a user
   const handleUpdate = async (user) => {
-    const newName = prompt("Enter new name:", user.name);
-    if (newName === null || newName === "") return; // User cancelled or entered empty string
+    setEditingUser(user);
+  };
 
-    const newEmail = prompt("Enter new email:", user.email);
-    if (newEmail === null || newEmail === "") return; // User cancelled or entered empty string
-
+  const handleSaveEdit = async (data) => {
     try {
-      const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await axios.put(
-        `http://localhost:5000/api/users/${user._id}`, 
-        { name: newName, email: newEmail },
-        config
+      const res = await api.put(`/users/${editingUser._id}`, data);
+      setUsers((prev) =>
+        prev.map((u) => (u._id === editingUser._id ? res.data : u))
       );
-      // Update the user in the list without a page refresh
-      setUsers(users.map(u => (u._id === user._id ? res.data : u)));
+      setSuccess("User updated");
+      setEditingUser(null);
     } catch (err) {
-      setError('Failed to update user.');
+      setError("Failed to update user.");
     }
   };
 
-  if (loading) return <CircularProgress sx={{ display: 'block', margin: 'auto', mt: 4 }} />;
-  if (error) return <Alert severity="error" sx={{ mt: 4 }}>{error}</Alert>;
+  if (loading)
+    return (
+      <CircularProgress sx={{ display: "block", margin: "auto", mt: 4 }} />
+    );
 
   return (
-    <Paper sx={{ width: '100%', overflow: 'hidden', mt: 4 }}>
+    <Paper sx={{ width: "100%", overflow: "hidden", mt: 4 }}>
       <Box sx={{ p: 2 }}>
         <Typography variant="h6" component="h2">
           Registered Users
         </Typography>
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
+        {success && (
+          <Alert severity="success" sx={{ mt: 2 }}>
+            {success}
+          </Alert>
+        )}
       </Box>
+      <EditUserDialog
+        open={!!editingUser}
+        onClose={() => setEditingUser(null)}
+        user={editingUser}
+        onSave={handleSaveEdit}
+      />
       <TableContainer>
         <Table stickyHeader aria-label="user table">
           <TableHead>
@@ -97,7 +123,9 @@ const UserList = () => {
               <TableCell>Email</TableCell>
               <TableCell>Role</TableCell>
               <TableCell>Joined On</TableCell>
-              {currentUser?.role === 'admin' && <TableCell align="right">Actions</TableCell>}
+              {currentUser?.role === "admin" && (
+                <TableCell align="right">Actions</TableCell>
+              )}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -105,14 +133,26 @@ const UserList = () => {
               <TableRow hover key={user._id}>
                 <TableCell>{user.name}</TableCell>
                 <TableCell>{user.email}</TableCell>
-                <TableCell sx={{ textTransform: 'capitalize' }}>{user.role}</TableCell>
-                <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
-                {currentUser?.role === 'admin' && (
+                <TableCell sx={{ textTransform: "capitalize" }}>
+                  {user.role}
+                </TableCell>
+                <TableCell>
+                  {new Date(user.createdAt).toLocaleDateString()}
+                </TableCell>
+                {currentUser?.role === "admin" && (
                   <TableCell align="right">
-                    <IconButton onClick={() => handleUpdate(user)} color="primary" aria-label="edit user">
+                    <IconButton
+                      onClick={() => handleUpdate(user)}
+                      color="primary"
+                      aria-label="edit user"
+                    >
                       <EditIcon />
                     </IconButton>
-                    <IconButton onClick={() => handleDelete(user._id)} color="error" aria-label="delete user">
+                    <IconButton
+                      onClick={() => handleDelete(user._id)}
+                      color="error"
+                      aria-label="delete user"
+                    >
                       <DeleteIcon />
                     </IconButton>
                   </TableCell>
